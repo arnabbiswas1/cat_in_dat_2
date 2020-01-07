@@ -20,6 +20,8 @@ from sklearn import metrics
 from sklearn.metrics import roc_auc_score
 
 import lightgbm as lgb
+import xgboost as xgb
+from catboost import CatBoost
 
 pd.options.display.max_rows = 200
 
@@ -625,7 +627,18 @@ def train_model(training, validation,predictors, target,  params, test_X=None):
         return bst, valid_score
 
 
-def make_prediction(df_train_X, df_train_Y, df_test_X, params, n_splits=5, seed=42):
+def make_prediction_classification(df_train_X, df_train_Y, df_test_X, kf, 
+                                   params, n_estimators=10000, 
+                                   early_stopping_rounds=100, model_type='lgb', seed=42):
+    """
+    Make prediction for classification use case only
+    
+    n_estimators : For XGB should be explicitly passed through this method
+    early_stopping_rounds : For XGB should be explicitly passed through this method. 
+                            For LGB can be passed through params as well
+    
+    """
+    
     yoof = np.zeros(len(df_train_X))
     yhat = np.zeros(len(df_test_X))
     cv_scores = []
@@ -634,30 +647,65 @@ def make_prediction(df_train_X, df_train_Y, df_test_X, params, n_splits=5, seed=
     features = df_train_X.columns
     
     #kf = KFold(n_splits=n_splits, random_state=SEED, shuffle=False)
-    kf = StratifiedKFold(n_splits=n_splits, random_state=seed, shuffle=True)
+    #kf = StratifiedKFold(n_splits=n_splits, random_state=seed, shuffle=True)
 
     fold = 0
     for in_index, oof_index in kf.split(df_train_X[features], df_train_Y):
+        # Start a counter describing number of folds
         fold += 1
+        # Number of splits defined as a part of KFold/StratifiedKFold
+        n_splits = kf.get_n_splits()
         print(f'fold {fold} of {n_splits}')
         X_in, X_oof = df_train_X.iloc[in_index].values, df_train_X.iloc[oof_index].values
         y_in, y_oof = df_train_Y.iloc[in_index].values, df_train_Y.iloc[oof_index].values
         
-        lgb_train = lgb.Dataset(X_in, y_in)
-        lgb_eval = lgb.Dataset(X_oof, y_oof, reference=lgb_train)
+        if model_type == 'lgb':
+            lgb_train = lgb.Dataset(X_in, y_in)
+            lgb_eval = lgb.Dataset(X_oof, y_oof, reference=lgb_train)
+
+            model = lgb.train(
+                params,
+                lgb_train,
+                valid_sets = [lgb_train, lgb_eval],
+                verbose_eval = 50,
+                early_stopping_rounds=early_stopping_rounds
+            )   
+            
+            del lgb_train, lgb_eval, in_index, X_in, y_in 
+            gc.collect()
+            
+            yoof[oof_index] = model.predict(X_oof)
+            yhat += model.predict(df_test_X.values)
         
-        model = lgb.train(
-            params,
-            lgb_train,
-            valid_sets = [lgb_train, lgb_eval],
-            verbose_eval = 50,
-        )   
+        elif model_type == 'xgb':
+            xgb_train = xgb.DMatrix(data=X_in, label=y_in, feature_names=features)
+            xgb_eval = xgb.DMatrix(data=X_oof, label=y_oof, feature_names=features)
+
+            watchlist = [(xgb_train, 'train'), (xgb_eval, 'valid_data')]
+            model = xgb.train(dtrain=xgb_train, 
+                              num_boost_round=n_estimators, 
+                              evals=watchlist, 
+                              early_stopping_rounds=early_stopping_rounds, 
+                              params=params, 
+                              verbose_eval=50)
+            
+            del xgb_train, xgb_eval, in_index, X_in, y_in 
+            gc.collect()
+            
+            yoof[oof_index] = model.predict(xgb.DMatrix(X_oof, feature_names=features), ntree_limit=model.best_ntree_limit)
+            yhat += model.predict(xgb.DMatrix(df_test_X.values, feature_names=features), ntree_limit=model.best_ntree_limit)
         
-        del lgb_train, lgb_eval, in_index, X_in, y_in 
-        gc.collect()
+        elif model_type == 'cat':
+            model = CatBoost(params=params)
+            model.fit(X_in, y_in)
+            model.fit(X_in, y_in, eval_set=(X_oof, y_oof), cat_features=[], use_best_model=True, verbose=False)
+            
+            del in_index, X_in, y_in 
+            gc.collect()
+            
+            yoof[oof_index] = model.predict(X_oof)
+            yhat += model.predict(df_test_X.values)
         
-        yoof[oof_index] = model.predict(X_oof)
-        yhat += model.predict(df_test_X.values)
         cv_oof_score = roc_auc_score(y_oof, yoof[oof_index])
         print(f'CV OOF Score for fold {fold} is {cv_oof_score}')
         cv_scores.append(cv_oof_score)
