@@ -2,13 +2,14 @@ import gc
 import random
 import sys 
 import feather
+import os
+import logging
+import time
 
 import numpy as np 
 import pandas as pd
-
 import matplotlib.pyplot as plt
-
-from IPython.display import display
+import seaborn as sns
 
 import plotly
 import plotly.graph_objects as go
@@ -23,8 +24,6 @@ import lightgbm as lgb
 import xgboost as xgb
 from catboost import CatBoost
 
-pd.options.display.max_rows = 200
-
 
 # Directory consisting of (almost) original data in feather format
 CREATED_DATA_DIR = '/home/jupyter/kaggle/energy/data/read_only_feather/v2'
@@ -32,22 +31,22 @@ CREATED_DATA_DIR = '/home/jupyter/kaggle/energy/data/read_only_feather/v2'
 CREATED_FEATURE_DIR = '/home/jupyter/kaggle/energy/data/created_data'
 
 
-def read_files(dir_path, train_file_name='train.csv', 
+def read_files(logger, dir_path, train_file_name='train.csv', 
                test_file_name='test.csv', 
                submission_file_name='sample_submission.csv', index_col=None):
     """
     Returns 3 data frames consisting of train, test and sample_submission.csv
     """
-    print('Loading Data...')
+    logger.info('Loading Data...')
     train = pd.read_csv(f'{dir_path}/{train_file_name}', index_col=index_col)
     test = pd.read_csv(f'{dir_path}/{test_file_name}', index_col=index_col)
     submission = pd.read_csv(f'{dir_path}/{submission_file_name}')
     
-    print(f'Shape of {train_file_name} : {train.shape}')
-    print(f'Shape of {test_file_name} : {test.shape}')
-    print(f'Shape of {submission_file_name} : {submission.shape}')
+    logger.info(f'Shape of {train_file_name} : {train.shape}')
+    logger.info(f'Shape of {test_file_name} : {test.shape}')
+    logger.info(f'Shape of {submission_file_name} : {submission.shape}')
     
-    print('Data Loaded...')
+    logger.info('Data Loaded...')
     
     return train, test, submission
 
@@ -89,7 +88,132 @@ def trigger_gc():
     Trigger GC
     """
     print(gc.collect())
+    
+    
+def set_timezone():
+    """
+    Sets the time zone to Kolkata.
+    """
+    os.environ["TZ"] = "Asia/Calcutta"
+    time.tzset()
+    
+    
+# def get_logger(model_number, run_id, path):
+#     """
+#     https://www.kaggle.com/ogrellier/user-level-lightgbm-lb-1-4480
+#     """
+#     FORMAT = "[%(levelname)s]%(asctime)s:%(name)s:%(message)s"
+#     #logging.basicConfig(format=FORMAT)
+    
+#     logger = logging.getLogger("modeling")
+#     logger.setLevel(logging.DEBUG)
+    
+#     handler = logging.StreamHandler(sys.stdout)
+#     fhandler = logging.FileHandler(f'{path}/{model_number}_{run_id}.log')
+#     formatter = logging.Formatter(FORMAT)
+#     handler.setFormatter(formatter)
+#     logger.addHandler(fhandler)
+#     return logger
 
+
+def get_logger(logger_name, model_number, run_id, path):
+    """
+    https://realpython.com/python-logging/
+    https://www.kaggle.com/ogrellier/user-level-lightgbm-lb-1-4480
+    """
+    FORMAT = "[%(levelname)s]%(asctime)s:%(name)s:%(message)s"
+    
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(logging.DEBUG)
+    
+    s_handler = logging.StreamHandler(sys.stdout)
+    f_handler = logging.FileHandler(f'{path}/{model_number}_{run_id}.log')
+    formatter = logging.Formatter(FORMAT)
+    s_handler.setFormatter(formatter)
+    f_handler.setFormatter(formatter)
+    logger.addHandler(f_handler)
+    logger.addHandler(s_handler)
+    return logger
+
+
+def update_tracking(run_id,
+                    field,
+                    value, csv_file="../../tracking/tracking.csv", 
+                    is_integer=False, no_of_digits=None, 
+                    drop_incomplete_rows=False):
+    """
+    Function to update the tracking CSV with information about the model
+    
+    https://github.com/RobMulla/kaggle-ieee-fraud-detection/blob/master/scripts/M001.py#L98
+    
+    """
+    try:
+        df = pd.read_csv(csv_file, index_col=[0])
+        
+        # If the file exists, drop rows (without final results) 
+        # for previous runs which has been stopped inbetween. 
+        if (drop_incomplete_rows & ('oof score' in df.columns)):
+            df = df.loc[~df['oof score'].isna()]
+             
+    except FileNotFoundError:
+        df = pd.DataFrame()
+        
+    if is_integer:
+        value = round(value)
+    elif no_of_digits is not None:
+        value = round(value, no_of_digits)
+
+    # Model number is index
+    df.loc[run_id, field] = value  
+    df.to_csv(csv_file)
+    
+    
+def save_file(logger, df, dir_name, file_name):
+    """
+    Utility method to save submission, off files etc.
+    """
+    logger.info(f'Saving {dir_name}/{file_name}')
+    df.to_csv(f'{dir_name}/{file_name}', index=False)
+    
+    
+def save_artifacts(logger, is_test, is_plot_fi, 
+                   result_dict, 
+                   submission_df, 
+                   model_number, 
+                   run_id, sub_dir, oof_dir, fi_dir, fi_fig_dir):
+    
+    if is_test == False:
+        score = result_dict['avg_cv_scores']
+        
+        # Save submission file
+        submission_df.target = result_dict['prediction']
+        save_file(logger, 
+                  submission_df,
+                  sub_dir, 
+                  f'sub_{model_number}_{run_id}_{score:.4f}.csv')
+
+        # Save OOF
+        oof_df = pd.DataFrame(result_dict['yoof'])
+        save_file(logger, 
+                  oof_df, 
+                  oof_dir, 
+                  f'oof_{model_number}_{run_id}_{score:.4f}.csv')
+    
+    if is_plot_fi == True:
+        # Feature Importance
+        feature_importance_df = result_dict['feature_importance']
+        save_file(logger, 
+                  feature_importance_df,
+                  fi_dir, 
+                  f'fi_{model_number}_{run_id}_{score:.4f}.csv')
+
+        # Save the plot
+        best_features = result_dict['best_features']
+        save_feature_importance_as_fig(best_features, 
+                                       fi_fig_dir, 
+                                       f'fi_{model_number}_{run_id}_{score:.4f}.png')
+    
+    
 ############################################## Visualization ##############################################
 
 
@@ -294,6 +418,13 @@ def plot_boxh_groupby(df, feature_name, by):
                               figsize=(10, 6))
     plt.title(f'Distribution of {feature_name} by {by}')
     plt.show()
+    
+    
+def save_feature_importance_as_fig(best_features_df, dir_name, file_name):
+    plt.figure(figsize=(16, 12));
+    sns.barplot(x="importance", y="feature", data=best_features_df.sort_values(by="importance", ascending=False));
+    plt.title('Features (avg over folds)');
+    plt.savefig(f'{dir_name}/{file_name}')
 
     
 ########################################################### EDA ###########################################################
@@ -627,24 +758,25 @@ def train_model(training, validation,predictors, target,  params, test_X=None):
         return bst, valid_score
 
 
-def make_prediction_classification(df_train_X, df_train_Y, df_test_X, kf, 
+def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_test_X, kf, features, 
                                    params, n_estimators=10000, 
-                                   early_stopping_rounds=100, model_type='lgb', seed=42):
+                                   early_stopping_rounds=100, model_type='lgb', seed=42, model=None, plot_feature_importance=False):
     """
     Make prediction for classification use case only
     
+    model : Needed only for model_type=='sklearn'
+    plot_feature_importance : Only needed for LGBM (in case feature importnace is needed)
     n_estimators : For XGB should be explicitly passed through this method
     early_stopping_rounds : For XGB should be explicitly passed through this method. 
                             For LGB can be passed through params as well
     
     """
-    
     yoof = np.zeros(len(df_train_X))
     yhat = np.zeros(len(df_test_X))
     cv_scores = []
     result_dict = {}
-    
-    features = df_train_X.columns
+    feature_importance = pd.DataFrame()
+    best_iterations = []
     
     #kf = KFold(n_splits=n_splits, random_state=SEED, shuffle=False)
     #kf = StratifiedKFold(n_splits=n_splits, random_state=seed, shuffle=True)
@@ -675,7 +807,11 @@ def make_prediction_classification(df_train_X, df_train_Y, df_test_X, kf,
             gc.collect()
             
             yoof[oof_index] = model.predict(X_oof)
+            #yhat += model.predict(df_test_X.values, num_iteration=model.best_iteration_)
+            #TODO : Best iteration
             yhat += model.predict(df_test_X.values)
+            
+            #best_iteration = model.best_iteration_
         
         elif model_type == 'xgb':
             xgb_train = xgb.DMatrix(data=X_in, label=y_in, feature_names=features)
@@ -695,6 +831,7 @@ def make_prediction_classification(df_train_X, df_train_Y, df_test_X, kf,
             yoof[oof_index] = model.predict(xgb.DMatrix(X_oof, feature_names=features), ntree_limit=model.best_ntree_limit)
             yhat += model.predict(xgb.DMatrix(df_test_X.values, feature_names=features), ntree_limit=model.best_ntree_limit)
         
+            #best_iteration = model.best_iteration
         elif model_type == 'cat':
             model = CatBoost(params=params)
             model.fit(X_in, y_in)
@@ -705,13 +842,35 @@ def make_prediction_classification(df_train_X, df_train_Y, df_test_X, kf,
             
             yoof[oof_index] = model.predict(X_oof)
             yhat += model.predict(df_test_X.values)
+            
+            #best_iteration = model.best_iteration_
+            
+        elif model_type == 'sklearn':
+            model = model
+            model.fit(X_in, y_in)
+            
+            yoof[oof_index] = model.predict_proba(X_oof)[:, 1]
+            yhat += model.predict_proba(df_test_X.values)[:, 1]
+            
+        # Calculate feature importance per fold
+        if model_type == 'lgb':
+            fold_importance = pd.DataFrame()
+            fold_importance["feature"] = features
+            fold_importance["importance"] = model.feature_importance()
+            fold_importance["fold"] = fold
+            feature_importance = pd.concat([feature_importance, fold_importance], axis=0)
         
         cv_oof_score = roc_auc_score(y_oof, yoof[oof_index])
-        print(f'CV OOF Score for fold {fold} is {cv_oof_score}')
+        logger.info(f'CV OOF Score for fold {fold} is {cv_oof_score}')
         cv_scores.append(cv_oof_score)
+        #best_iterations.append(best_iteration)
         
         del oof_index, X_oof, y_oof
         gc.collect()
+        
+        update_tracking(run_id, "Metric_fold_{}".format(fold),
+                    cv_oof_score,
+                    is_integer=False)
 
     yhat /= n_splits
 
@@ -719,9 +878,9 @@ def make_prediction_classification(df_train_X, df_train_Y, df_test_X, kf,
     avg_cv_scores = round(sum(cv_scores)/len(cv_scores), 5)
     std_cv_scores = round(np.array(cv_scores).std(), 5)
 
-    print(f'Combined OOF score : {oof_score}')
-    print(f'Average of {fold} folds OOF score {avg_cv_scores}')
-    print(f'std of {fold} folds OOF score {std_cv_scores}')
+    logger.info(f'Combined OOF score : {oof_score}')
+    logger.info(f'Average of {fold} folds OOF score {avg_cv_scores}')
+    logger.info(f'std of {fold} folds OOF score {std_cv_scores}')
     
     result_dict['yoof'] = yoof
     result_dict['prediction'] = yhat
@@ -730,7 +889,26 @@ def make_prediction_classification(df_train_X, df_train_Y, df_test_X, kf,
     result_dict['avg_cv_scores'] = avg_cv_scores
     result_dict['std_cv_scores'] = std_cv_scores
     
+    update_tracking(run_id, "oof score", oof_score, is_integer=False)
+    update_tracking(run_id, "avg score", avg_cv_scores, is_integer=False)
+    update_tracking(run_id, "std score", std_cv_scores, is_integer=False)
+    # Best Iteration
+    #update_tracking(run_id, 'avg_best_iteration', np.mean(best_iterations), integer=True)
+    
     del yoof, yhat
     gc.collect()
     
+    # Plot feature importance
+    if model_type == 'lgb':
+        # Not sure why it was necessary. Hence commenting
+        #feature_importance["importance"] /= n_splits
+        cols = feature_importance[["feature", "importance"]].groupby("feature").mean().sort_values(
+            by="importance", ascending=False)[:50].index
+
+        best_features = feature_importance.loc[feature_importance.feature.isin(cols)]
+
+        result_dict['feature_importance'] = feature_importance
+        result_dict['best_features'] = best_features
+            
+    logger.info('Training/Prediction completed!')
     return result_dict
