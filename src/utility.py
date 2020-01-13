@@ -20,6 +20,8 @@ from sklearn.model_selection import StratifiedKFold
 from sklearn import metrics
 from sklearn.metrics import roc_auc_score
 
+import category_encoders as ce
+
 import lightgbm as lgb
 import xgboost as xgb
 from catboost import CatBoost
@@ -52,6 +54,11 @@ def read_files(logger, dir_path, train_file_name='train.csv',
 
 
 def read_data(data_dir, train=True, test=True, weather_train=False, weather_test=False, building=False):
+    """
+    Don't use
+    
+    Designed for ASHRAE
+    """
     print('Reading Data...')
     train_df = None
     test_df = None
@@ -78,6 +85,7 @@ def read_data(data_dir, train=True, test=True, weather_train=False, weather_test
 
 ############################################## Utility ##############################################
 
+
 def set_seed(seed=0):
     random.seed(seed)
     np.random.seed(seed)
@@ -96,24 +104,6 @@ def set_timezone():
     """
     os.environ["TZ"] = "Asia/Calcutta"
     time.tzset()
-    
-    
-# def get_logger(model_number, run_id, path):
-#     """
-#     https://www.kaggle.com/ogrellier/user-level-lightgbm-lb-1-4480
-#     """
-#     FORMAT = "[%(levelname)s]%(asctime)s:%(name)s:%(message)s"
-#     #logging.basicConfig(format=FORMAT)
-    
-#     logger = logging.getLogger("modeling")
-#     logger.setLevel(logging.DEBUG)
-    
-#     handler = logging.StreamHandler(sys.stdout)
-#     fhandler = logging.FileHandler(f'{path}/{model_number}_{run_id}.log')
-#     formatter = logging.Formatter(FORMAT)
-#     handler.setFormatter(formatter)
-#     logger.addHandler(fhandler)
-#     return logger
 
 
 def get_logger(logger_name, model_number, run_id, path):
@@ -181,10 +171,13 @@ def save_artifacts(logger, is_test, is_plot_fi,
                    submission_df, 
                    model_number, 
                    run_id, sub_dir, oof_dir, fi_dir, fi_fig_dir):
+    """
+    Save the submission, OOF predictions, feature importance values
+    and plos to different directories.
+    """
+    score = result_dict['avg_cv_scores']
     
     if is_test == False:
-        score = result_dict['avg_cv_scores']
-        
         # Save submission file
         submission_df.target = result_dict['prediction']
         save_file(logger, 
@@ -485,6 +478,8 @@ def check_value_counts_across_train_test(train_df, test_df, feature_name, normal
 
 def get_non_zero_meter_reading_timestamp(df, building_id, start_time, stop_time, meter=0):
     """
+    For ASHRAE
+    
     For a particular building, when was the first non-zero meter reading appeared.
     given the start and stop time and the type of the meter
     """
@@ -495,10 +490,6 @@ def get_non_zero_meter_reading_timestamp(df, building_id, start_time, stop_time,
 
 
 ###################################################### Pre-Processing ######################################################
-
-from sklearn.preprocessing import LabelEncoder
-import category_encoders as ce
-
 
 def get_encoder(encoder_name):
     """
@@ -565,80 +556,7 @@ def convert_to_int(df, feature_names):
     return df
 
 
-def fill_with_gauss(df, w=12):
-    return df.fillna(df.rolling(window=w, win_type='gaussian', center=True, min_periods=1).mean(std=2))
-
-
-def fill_with_po3(df):
-    df = df.fillna(df.interpolate(method='polynomial', order=3))
-    assert df.count().min() >= len(df) - 1 
-    # fill the first item with second item
-    return df.fillna(df.iloc[1])         
-
-
-def fill_with_lin(df):
-    df =  df.fillna(df.interpolate(method='linear'))
-    assert df.count().min() >= len(df) - 1 
-    # fill the first item with second item
-    return df.fillna(df.iloc[1])         
-
-
-def fill_with_mix(df):
-    df = (df.fillna(df.interpolate(method='linear', limit_direction='both')) +
-               df.fillna(df.interpolate(method='polynomial', order=3, limit_direction='both'))
-              ) * 0.5
-    assert df.count().min() >= len(df) - 1 
-    # fill the first item with second item
-    return df.fillna(df.iloc[1])
-
-
-def clean_data_for_site_0(df):
-    # Get the building_ids for site 0
-    df_site_0 = df[df.site_id == 0]
-    
-    # On May 20th at what time, the meter reading started?
-    
-    # I already know that building 40, 45, 53 does not start at 20th May
-    # Building 29 - Aug 10th 00 HRS
-    # Building 40 - June 3rd 11 AM
-    # Building 45 - June 30th 13 HRS onwards
-    # Building 53 - Don't do anything
-    
-    building_ids = list(df_site_0.building_id.unique())
-    building_ids.remove(29)
-    building_ids.remove(40)
-    building_ids.remove(45)
-    building_ids.remove(53)
-
-    # Build a dictionary with building id vs time at which meter reading started
-    non_zero_meter_reading_start_dict = {}
-    non_zero_meter_reading_start_dict[40] = pd.Timestamp('2016-06-03 11:00:00')
-    non_zero_meter_reading_start_dict[45] = pd.Timestamp('2016-06-30 13:00:00')
-    non_zero_meter_reading_start_dict[29] = pd.Timestamp('2016-08-10 00:00:00')
-
-    # Let's assume for other buildings it starts at May 20th
-    # Get the timestamp from which meter reading has non-zero values
-    for id_ in building_ids:
-        stamp = get_non_zero_meter_reading_timestamp(df_site_0, 
-                                             building_id=id_, 
-                                             start_time='2016-05-20 00:00:00',
-                                             stop_time='2016-05-21 00:00:00')
-        non_zero_meter_reading_start_dict[id_] =  stamp
-    
-    # Clean the data now
-    for building_id, time in non_zero_meter_reading_start_dict.items():
-        print(f'Cleaning for building id {building_id}')
-        df.drop(df[(df.site_id == 0) 
-                               & (df.building_id == building_id) 
-                               & (df.timestamp < time)].index, inplace=True)
-        print(f'Distribution of time for building id {building_id} afer cleaning')
-        display(df[(df.site_id == 0) 
-                               & (df.building_id == building_id)].timestamp.describe())
-    print('Cleaning of data completed...')
-    return df
-
-
-############################################ Feature Engineering ############################################
+################################################## Time Series ####################################################
 
 def create_date_features(source_df, target_df, feature_name):
     '''
@@ -673,6 +591,48 @@ def create_date_features(source_df, target_df, feature_name):
     return target_df
 
 
+def fill_with_gauss(df, w=12):
+    """
+    Fill missing values in a time series data using gaussian
+    """
+    return df.fillna(df.rolling(window=w, win_type='gaussian', center=True, min_periods=1).mean(std=2))
+
+
+def fill_with_po3(df):
+    """
+    Fill missing values in a time series data using interpolation (polynomial, order 3)
+    """
+    df = df.fillna(df.interpolate(method='polynomial', order=3))
+    assert df.count().min() >= len(df) - 1 
+    # fill the first item with second item
+    return df.fillna(df.iloc[1])         
+
+
+def fill_with_lin(df):
+    """
+    Fill missing values in a time series data using interpolation (linear)
+    """
+    df =  df.fillna(df.interpolate(method='linear'))
+    assert df.count().min() >= len(df) - 1 
+    # fill the first item with second item
+    return df.fillna(df.iloc[1])         
+
+
+def fill_with_mix(df):
+    """
+    Fill missing values in a time series data using interpolation (linear + polynomial)
+    """
+    df = (df.fillna(df.interpolate(method='linear', limit_direction='both')) +
+               df.fillna(df.interpolate(method='polynomial', order=3, limit_direction='both'))
+              ) * 0.5
+    assert df.count().min() >= len(df) - 1 
+    # fill the first item with second item
+    return df.fillna(df.iloc[1])
+
+
+############################################ Feature Engineering ############################################
+
+
 def concat_features(source_df, target_df, f1, f2):
     print(f'Concating features {f1} and {f2}')
     target_df[f'{f1}_{f2}'] =  source_df[f1].astype(str) + '_' + source_df[f2].astype(str)
@@ -680,6 +640,9 @@ def concat_features(source_df, target_df, f1, f2):
 
 
 def create_interaction_features(source_df, target_df):
+    """
+    For ASHARE
+    """
     print('Creating interaction features...')
     target_df = concat_features(source_df, target_df, 'site_id', 'building_id')
     target_df['site_building_meter_id'] = source_df.site_id.astype(str) + '_' + source_df.building_id.astype(str) + '_' + source_df.meter.astype(str)
@@ -696,6 +659,9 @@ def create_interaction_features(source_df, target_df):
 
 
 def create_age(source_df, target_df, f):
+    """
+    For ASHARE
+    """
     print('Creating age feature')
     target_df['building_age'] = 2019 - source_df[f]
     return target_df
@@ -760,7 +726,9 @@ def train_model(training, validation,predictors, target,  params, test_X=None):
 
 def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_test_X, kf, features, 
                                    params, n_estimators=10000, 
-                                   early_stopping_rounds=100, model_type='lgb', seed=42, model=None, plot_feature_importance=False):
+                                   early_stopping_rounds=100, model_type='lgb', 
+                                   is_test=False, seed=42, model=None, 
+                                   plot_feature_importance=False):
     """
     Make prediction for classification use case only
     
@@ -807,10 +775,12 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
             gc.collect()
             
             yoof[oof_index] = model.predict(X_oof)
-            #yhat += model.predict(df_test_X.values, num_iteration=model.best_iteration_)
-            #TODO : Best iteration
-            yhat += model.predict(df_test_X.values)
+            if is_test==False:
+                #yhat += model.predict(df_test_X.values, num_iteration=model.best_iteration_)
+                #TODO : Best iteration
+                yhat += model.predict(df_test_X.values)
             
+            #TODO
             #best_iteration = model.best_iteration_
         
         elif model_type == 'xgb':
@@ -829,7 +799,10 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
             gc.collect()
             
             yoof[oof_index] = model.predict(xgb.DMatrix(X_oof, feature_names=features), ntree_limit=model.best_ntree_limit)
-            yhat += model.predict(xgb.DMatrix(df_test_X.values, feature_names=features), ntree_limit=model.best_ntree_limit)
+            if is_test==False:
+                yhat += model.predict(xgb.DMatrix(
+                    df_test_X.values, feature_names=features), 
+                                      ntree_limit=model.best_ntree_limit)
         
             #best_iteration = model.best_iteration
         elif model_type == 'cat':
@@ -841,7 +814,8 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
             gc.collect()
             
             yoof[oof_index] = model.predict(X_oof)
-            yhat += model.predict(df_test_X.values)
+            if is_test==False:
+                yhat += model.predict(df_test_X.values)
             
             #best_iteration = model.best_iteration_
             
@@ -850,7 +824,8 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
             model.fit(X_in, y_in)
             
             yoof[oof_index] = model.predict_proba(X_oof)[:, 1]
-            yhat += model.predict_proba(df_test_X.values)[:, 1]
+            if is_test==False:
+                yhat += model.predict_proba(df_test_X.values)[:, 1]
             
         # Calculate feature importance per fold
         if model_type == 'lgb':

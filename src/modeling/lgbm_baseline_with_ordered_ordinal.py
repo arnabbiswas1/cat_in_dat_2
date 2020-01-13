@@ -10,6 +10,25 @@ import numpy as np
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import StratifiedKFold
 
+"""
+- Missing Value Handling
+    - Filled with missing_binary, missing_nom for binary and nominal
+    - ord_0 : 999
+    - ord_1, ord_2, ord_3, ord_4, ord_5 : missing_ord
+    - day : 999
+    - month : 999
+- PreProcessing
+    - ordinal variables
+        - ord_1, ord_2 are ordered manually
+        - 'ord_0', 'ord_3', 'ord_4', 'ord_5' : ordered based on string literal
+    - Encoding
+        - Convereted every variable to Cat type
+        - Label Encoding
+- Modeling
+    - LGMB
+"""
+
+
 sys.path.insert(0, "/home/jupyter/kaggle/cat_in_dat_2_git/cat_in_dat_2/src")
 import utility
 
@@ -30,8 +49,10 @@ MODEL_NUMBER = os.path.basename(__file__).split('.')[0]
 DATA_DIR = '/home/jupyter/kaggle/cat_in_dat_2_git/cat_in_dat_2/data/read_only'
 SEED = 42
 
+EXP_DETAILS='Baseline with LGB'
+
 # Flags
-IS_TEST=False
+IS_TEST=True
 PLOT_FEATURE_IMPORTANCE = True
 
 # Parameters related to KFold
@@ -210,38 +231,9 @@ utility.save_artifacts(logger, IS_TEST, PLOT_FEATURE_IMPORTANCE,
                        FI_DIR, 
                        FI_FIG_DIR)
 
-# if IS_TEST == False:
-#     # Save submission file
-#     submission.target = result_dict['prediction']
-#     score = result_dict['avg_cv_scores']
-#     utility.save_file(logger, 
-#                           submission,
-#                           SUBMISSION_DIR, 
-#                           f'sub_{MODEL_NUMBER}_{run_id}_{score:.4f}.csv')
-    
-#     # Save OOF
-#     oof_df = pd.DataFrame(result_dict['yoof'])
-#     utility.save_file(logger, 
-#                           oof_df,
-#                           OOF_DIR, 
-#                           f'oof_{MODEL_NUMBER}_{run_id}_{score:.4f}.csv')
-    
-# if PLOT_FEATURE_IMPORTANCE == True:
-#     # Feature Importance
-#     feature_importance_df = result_dict['feature_importance']
-#     utility.save_file(logger, 
-#                           feature_importance_df,
-#                           FI_DIR, 
-#                           f'fi_{MODEL_NUMBER}_{run_id}_{score:.4f}.csv')
-    
-#     # Save the plot
-#     best_features = result_dict['best_features']
-#     utility.save_feature_importance_as_fig(best_features, 
-#                                            FI_FIG_DIR, 
-#                                            f'fi_{MODEL_NUMBER}_{run_id}_{score:.4f}.png')
-    
-
 end = timer()
 utility.update_tracking(run_id, "training_time", (end - start), is_integer=True)
+# Update the comments
+utility.update_tracking(run_id, "comments", EXP_DETAILS)
 logger.info('Done!')
 
