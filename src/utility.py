@@ -755,7 +755,7 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
         fold += 1
         # Number of splits defined as a part of KFold/StratifiedKFold
         n_splits = kf.get_n_splits()
-        print(f'fold {fold} of {n_splits}')
+        logger.info(f'fold {fold} of {n_splits}')
         X_in, X_oof = df_train_X.iloc[in_index].values, df_train_X.iloc[oof_index].values
         y_in, y_oof = df_train_Y.iloc[in_index].values, df_train_Y.iloc[oof_index].values
         
@@ -774,14 +774,15 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
             del lgb_train, lgb_eval, in_index, X_in, y_in 
             gc.collect()
             
-            yoof[oof_index] = model.predict(X_oof)
+            yoof[oof_index] = model.predict(X_oof, num_iteration=model.best_iteration)
             if is_test==False:
-                #yhat += model.predict(df_test_X.values, num_iteration=model.best_iteration_)
+                logger.info(f'Best number of iterations for fold {fold} is: {model.best_iteration}')
+                yhat += model.predict(df_test_X.values, num_iteration=model.best_iteration)
                 #TODO : Best iteration
-                yhat += model.predict(df_test_X.values)
+                #yhat += model.predict(df_test_X.values)
             
             #TODO
-            #best_iteration = model.best_iteration_
+            best_iterations = model.best_iteration
         
         elif model_type == 'xgb':
             xgb_train = xgb.DMatrix(data=X_in, label=y_in, feature_names=features)
@@ -843,7 +844,7 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
         del oof_index, X_oof, y_oof
         gc.collect()
         
-        update_tracking(run_id, "Metric_fold_{}".format(fold),
+        update_tracking(run_id, "metric_fold_{}".format(fold),
                     cv_oof_score,
                     is_integer=False)
 
@@ -864,11 +865,12 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
     result_dict['avg_cv_scores'] = avg_cv_scores
     result_dict['std_cv_scores'] = std_cv_scores
     
-    update_tracking(run_id, "oof score", oof_score, is_integer=False)
-    update_tracking(run_id, "avg score", avg_cv_scores, is_integer=False)
-    update_tracking(run_id, "std score", std_cv_scores, is_integer=False)
+    update_tracking(run_id, "oof_score", oof_score, is_integer=False)
+    update_tracking(run_id, "cv_avg_score", avg_cv_scores, is_integer=False)
+    update_tracking(run_id, "cv_std_score", std_cv_scores, is_integer=False)
     # Best Iteration
-    #update_tracking(run_id, 'avg_best_iteration', np.mean(best_iterations), integer=True)
+    update_tracking(run_id, 'avg_best_iteration', np.mean(best_iterations), integer=True)
+    update_tracking(run_id, 'std_best_iteration', np.stf(best_iterations), integer=True)
     
     del yoof, yhat
     gc.collect()

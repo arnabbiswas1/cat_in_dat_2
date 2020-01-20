@@ -52,11 +52,19 @@ SEED = 42
 EXP_DETAILS='Baseline with LGB'
 
 # Flags
-IS_TEST=True
+IS_TEST=False
 PLOT_FEATURE_IMPORTANCE = True
 
+# General configuration stuff
+LOGGER_NAME = 'modeling'
+LOG_DIR = '../../log'
+SUBMISSION_DIR = '../../sub'
+OOF_DIR = '../../oof'
+FI_DIR = '../../fi'
+FI_FIG_DIR = '../../fi_fig'
+
 # Parameters related to KFold
-N_FOLDS = 2
+N_FOLDS = 5
 SHUFFLE = True
 
 # Parameters related to model
@@ -69,14 +77,6 @@ N_THREADS = -1
 
 # Name of the target
 TARGET = 'target'
-
-# Other configuration stuff
-LOGGER_NAME = 'modeling'
-LOG_DIR = '../../log'
-SUBMISSION_DIR = '../../sub'
-OOF_DIR = '../../oof'
-FI_DIR = '../../fi'
-FI_FIG_DIR = '../../fi_fig'
 
 # Params 
 lgb_params = {
@@ -97,7 +97,8 @@ logger.info(f'Running for Model Number {MODEL_NUMBER}')
 
 utility.update_tracking(run_id, "model_number", MODEL_NUMBER, drop_incomplete_rows=True)
 utility.update_tracking(run_id, "model_type", MODEL_TYPE)
-utility.update_tracking(run_id, "eval_metric", METRIC)
+utility.update_tracking(run_id, "model_type", MODEL_TYPE)
+utility.update_tracking(run_id, "is_test", IS_TEST)
 utility.update_tracking(run_id, "n_estimators", N_ESTIMATORS)
 utility.update_tracking(run_id, "early_stopping_rounds", EARLY_STOPPING_ROUNDS)
 utility.update_tracking(run_id, "random_state", SEED)
@@ -213,7 +214,7 @@ features = train_X.columns
 logger.info(f'Feature names {features.values}')
 logger.info(f'Target is {TARGET}')
 
-utility.update_tracking(run_id, "n_features", len(features), is_integer=True)
+utility.update_tracking(run_id, "no_of_features", len(features), is_integer=True)
 
 result_dict = utility.make_prediction_classification(logger, run_id, train_X, train_Y, test_X, features=features,
                                                      params=lgb_params, seed=SEED, 
