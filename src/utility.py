@@ -781,8 +781,7 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
                 #TODO : Best iteration
                 #yhat += model.predict(df_test_X.values)
             
-            #TODO
-            best_iterations = model.best_iteration
+            best_iteration = model.best_iteration
         
         elif model_type == 'xgb':
             xgb_train = xgb.DMatrix(data=X_in, label=y_in, feature_names=features)
@@ -790,8 +789,8 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
 
             watchlist = [(xgb_train, 'train'), (xgb_eval, 'valid_data')]
             model = xgb.train(dtrain=xgb_train, 
-                              num_boost_round=n_estimators, 
-                              evals=watchlist, 
+                              num_boost_round=n_estimators,
+                              evals=watchlist,
                               early_stopping_rounds=early_stopping_rounds, 
                               params=params, 
                               verbose_eval=50)
@@ -804,11 +803,13 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
                 yhat += model.predict(xgb.DMatrix(
                     df_test_X.values, feature_names=features), 
                                       ntree_limit=model.best_ntree_limit)
-        
-            #best_iteration = model.best_iteration
+            
+            logger.info(f'Best number of iterations for fold {fold} is: {model.best_ntree_limit}')
+            best_iteration = model.best_ntree_limit
+            
         elif model_type == 'cat':
             model = CatBoost(params=params)
-            model.fit(X_in, y_in)
+            #model.fit(X_in, y_in)
             model.fit(X_in, y_in, eval_set=(X_oof, y_oof), cat_features=[], use_best_model=True, verbose=False)
             
             del in_index, X_in, y_in 
@@ -835,11 +836,18 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
             fold_importance["importance"] = model.feature_importance()
             fold_importance["fold"] = fold
             feature_importance = pd.concat([feature_importance, fold_importance], axis=0)
+        elif model_type == 'xgb':
+            # Calculate feature importance per fold
+            fold_importance = pd.DataFrame()
+            fold_importance["feature"] = model.get_score().keys()
+            fold_importance["importance"] = model.get_score().values()
+            fold_importance["fold"] = fold
+            feature_importance = pd.concat([feature_importance, fold_importance], axis=0)
         
         cv_oof_score = roc_auc_score(y_oof, yoof[oof_index])
         logger.info(f'CV OOF Score for fold {fold} is {cv_oof_score}')
         cv_scores.append(cv_oof_score)
-        #best_iterations.append(best_iteration)
+        best_iterations.append(best_iteration)
         
         del oof_index, X_oof, y_oof
         gc.collect()
@@ -869,14 +877,14 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
     update_tracking(run_id, "cv_avg_score", avg_cv_scores, is_integer=False)
     update_tracking(run_id, "cv_std_score", std_cv_scores, is_integer=False)
     # Best Iteration
-    update_tracking(run_id, 'avg_best_iteration', np.mean(best_iterations), integer=True)
-    update_tracking(run_id, 'std_best_iteration', np.stf(best_iterations), integer=True)
+    update_tracking(run_id, 'avg_best_iteration', np.mean(best_iterations), is_integer=False)
+    update_tracking(run_id, 'std_best_iteration', np.std(best_iterations), is_integer=False)
     
     del yoof, yhat
     gc.collect()
     
     # Plot feature importance
-    if model_type == 'lgb':
+    if (model_type == 'lgb') | (model_type == 'xgb'):
         # Not sure why it was necessary. Hence commenting
         #feature_importance["importance"] /= n_splits
         cols = feature_importance[["feature", "importance"]].groupby("feature").mean().sort_values(

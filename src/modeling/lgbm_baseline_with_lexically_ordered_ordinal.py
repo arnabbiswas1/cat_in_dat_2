@@ -19,8 +19,7 @@ from sklearn.model_selection import StratifiedKFold
     - month : 999
 - PreProcessing
     - ordinal variables
-        - ord_1, ord_2 are ordered manually
-        - 'ord_0', 'ord_3', 'ord_4', 'ord_5' : ordered based on string literal
+        - ord_1, ord_2, ord_0', 'ord_3', 'ord_4', 'ord_5' : ordered based on string literal
     - Encoding
         - Convereted every variable to Cat type
         - Label Encoding
@@ -49,7 +48,7 @@ MODEL_NUMBER = os.path.basename(__file__).split('.')[0]
 DATA_DIR = '/home/jupyter/kaggle/cat_in_dat_2_git/cat_in_dat_2/data/read_only'
 SEED = 42
 
-EXP_DETAILS='Baseline with LGBM manually ordered ord_1, ord_2'
+EXP_DETAILS='Baseline with LGBM, ordinal variables lexically ordered'
 
 # Flags
 IS_TEST=False
@@ -64,7 +63,7 @@ FI_DIR = '../../fi'
 FI_FIG_DIR = '../../fi_fig'
 
 # Parameters related to KFold
-N_FOLDS = 5
+N_FOLDS = 2
 SHUFFLE = True
 
 # Parameters related to model
@@ -153,17 +152,17 @@ new_features = []
 features_to_removed = []
 
 # For  ord_1, ord_2 we can decide on the order based on names
-cat_type_ord_1 = pd.CategoricalDtype(categories=['Novice', 'Contributor', 'Expert', 'Master', 'Grandmaster', 'missing_ord'])
-combined_df['ord_1_cat'] = combined_df['ord_1'].astype(cat_type_ord_1)
+# cat_type_ord_1 = pd.CategoricalDtype(categories=['Novice', 'Contributor', 'Expert', 'Master', 'Grandmaster', 'missing_ord'])
+# combined_df['ord_1_cat'] = combined_df['ord_1'].astype(cat_type_ord_1)
 
-cat_type_ord_2 = pd.CategoricalDtype(categories=['Freezing', 'Cold', 'Warm', 'Hot', 'Boiling Hot', 'Lava Hot', 'missing_ord'])
-combined_df['ord_2_cat'] = combined_df['ord_2'].astype(cat_type_ord_2)
+# cat_type_ord_2 = pd.CategoricalDtype(categories=['Freezing', 'Cold', 'Warm', 'Hot', 'Boiling Hot', 'Lava Hot', 'missing_ord'])
+# combined_df['ord_2_cat'] = combined_df['ord_2'].astype(cat_type_ord_2)
 
-new_features = new_features + ['ord_1_cat', 'ord_2_cat']
-features_to_removed = features_to_removed + ['ord_1', 'ord_2']
+# new_features = new_features + ['ord_1_cat', 'ord_2_cat']
+# features_to_removed = features_to_removed + ['ord_1', 'ord_2']
 
 # Convert rest of the ordinal features in categories 
-for feature_name in ['ord_0', 'ord_3', 'ord_4', 'ord_5']:
+for feature_name in ['ord_1', 'ord_2', 'ord_0', 'ord_3', 'ord_4', 'ord_5']:
     logger.info(f'Converting {feature_name} in ordered categorical')
     combined_df[feature_name + '_cat'] = pd.Categorical(combined_df[feature_name], ordered=True)
     new_features = new_features + [feature_name + '_cat']

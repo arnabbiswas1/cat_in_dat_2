@@ -68,8 +68,8 @@ N_FOLDS = 5
 SHUFFLE = True
 
 # Parameters related to model
-MODEL_TYPE = "lgb"
-METRIC = 'auc'
+MODEL_TYPE = "cat"
+METRIC = 'AUC'
 N_ESTIMATORS = 100000
 EARLY_STOPPING_ROUNDS = 100
 VERBOSE = -1
@@ -79,13 +79,15 @@ N_THREADS = -1
 TARGET = 'target'
 
 # Params 
-lgb_params = {
-    'objective' : 'binary',
-    'boosting_type' : 'gbdt',
+cat_params = {
+    'objective' : 'Logloss',
+    'boosting_type' : 'Plain',
     'metric' : METRIC,
-    'num_threads': N_THREADS,
-    'verbose' : VERBOSE,
-    'seed': SEED,
+    'thread_count': N_THREADS,
+    # TODO
+    #'verbose' : VERBOSE,
+    'logging_level' : 'Verbose',
+    'random_seed': SEED,
     'n_estimators' : N_ESTIMATORS,
     'early_stopping_rounds' : EARLY_STOPPING_ROUNDS
     }
@@ -217,7 +219,7 @@ logger.info(f'Target is {TARGET}')
 utility.update_tracking(run_id, "no_of_features", len(features), is_integer=True)
 
 result_dict = utility.make_prediction_classification(logger, run_id, train_X, train_Y, test_X, features=features,
-                                                     params=lgb_params, seed=SEED, 
+                                                     params=cat_params, seed=SEED, 
                                                      kf=kf, model_type=MODEL_TYPE, 
                                                      plot_feature_importance=PLOT_FEATURE_IMPORTANCE)
 

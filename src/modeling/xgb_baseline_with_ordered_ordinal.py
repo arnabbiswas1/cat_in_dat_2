@@ -64,30 +64,29 @@ FI_DIR = '../../fi'
 FI_FIG_DIR = '../../fi_fig'
 
 # Parameters related to KFold
-N_FOLDS = 5
+N_FOLDS = 2
 SHUFFLE = True
 
 # Parameters related to model
-MODEL_TYPE = "lgb"
+MODEL_TYPE = "xgb"
 METRIC = 'auc'
 N_ESTIMATORS = 100000
 EARLY_STOPPING_ROUNDS = 100
-VERBOSE = -1
+VERBOSE = 2
 N_THREADS = -1
 
 # Name of the target
 TARGET = 'target'
 
 # Params 
-lgb_params = {
-    'objective' : 'binary',
-    'boosting_type' : 'gbdt',
-    'metric' : METRIC,
-    'num_threads': N_THREADS,
-    'verbose' : VERBOSE,
+xgb_params = {
+    'objective' : 'binary:logistic',
+    'booster' : 'gbtree',
+    'eval_metric' : METRIC,
+    'nthread': N_THREADS,
+    'verbosity' : VERBOSE,
     'seed': SEED,
-    'n_estimators' : N_ESTIMATORS,
-    'early_stopping_rounds' : EARLY_STOPPING_ROUNDS
+    'validate_parameters' : True
     }
 
 logger = utility.get_logger(LOGGER_NAME, MODEL_NUMBER, run_id, LOG_DIR)
@@ -217,7 +216,7 @@ logger.info(f'Target is {TARGET}')
 utility.update_tracking(run_id, "no_of_features", len(features), is_integer=True)
 
 result_dict = utility.make_prediction_classification(logger, run_id, train_X, train_Y, test_X, features=features,
-                                                     params=lgb_params, seed=SEED, 
+                                                     params=xgb_params, seed=SEED, 
                                                      kf=kf, model_type=MODEL_TYPE, 
                                                      plot_feature_importance=PLOT_FEATURE_IMPORTANCE)
 
