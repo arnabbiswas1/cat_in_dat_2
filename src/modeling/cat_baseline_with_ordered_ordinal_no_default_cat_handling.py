@@ -49,7 +49,7 @@ MODEL_NUMBER = os.path.basename(__file__).split('.')[0]
 DATA_DIR = '/home/jupyter/kaggle/cat_in_dat_2_git/cat_in_dat_2/data/read_only'
 SEED = 42
 
-EXP_DETAILS='Baseline with LGBM manually ordered ord_1, ord_2'
+EXP_DETAILS='Baseline with CatBoost manually ordered ord_1, ord_2. All the categorical features have been encoded using LabelEncoder'
 
 # Flags
 IS_TEST=False
@@ -64,7 +64,7 @@ FI_DIR = '../../fi'
 FI_FIG_DIR = '../../fi_fig'
 
 # Parameters related to KFold
-N_FOLDS = 5
+N_FOLDS = 2
 SHUFFLE = True
 
 # Parameters related to model
@@ -72,7 +72,7 @@ MODEL_TYPE = "cat"
 METRIC = 'AUC'
 N_ESTIMATORS = 100000
 EARLY_STOPPING_ROUNDS = 100
-VERBOSE = -1
+VERBOSE = 100
 N_THREADS = -1
 
 # Name of the target
@@ -82,11 +82,10 @@ TARGET = 'target'
 cat_params = {
     'objective' : 'Logloss',
     'boosting_type' : 'Plain',
-    'metric' : METRIC,
+    'eval_metric' : METRIC,
     'thread_count': N_THREADS,
-    # TODO
-    #'verbose' : VERBOSE,
-    'logging_level' : 'Verbose',
+    'verbose' : VERBOSE,    # stdout about training process every 100 iter
+    #'logging_level' : 'Verbose',
     'random_seed': SEED,
     'n_estimators' : N_ESTIMATORS,
     'early_stopping_rounds' : EARLY_STOPPING_ROUNDS

@@ -24,7 +24,9 @@ import category_encoders as ce
 
 import lightgbm as lgb
 import xgboost as xgb
+
 from catboost import CatBoost
+from catboost import Pool
 
 
 # Directory consisting of (almost) original data in feather format
@@ -728,7 +730,7 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
                                    params, n_estimators=10000, 
                                    early_stopping_rounds=100, model_type='lgb', 
                                    is_test=False, seed=42, model=None, 
-                                   plot_feature_importance=False):
+                                   plot_feature_importance=False, cat_features=None):
     """
     Make prediction for classification use case only
     
@@ -737,6 +739,8 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
     n_estimators : For XGB should be explicitly passed through this method
     early_stopping_rounds : For XGB should be explicitly passed through this method. 
                             For LGB can be passed through params as well
+                            
+    cat_features : Only needed for CatBoost
     
     """
     yoof = np.zeros(len(df_train_X))
@@ -776,12 +780,15 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
             
             yoof[oof_index] = model.predict(X_oof, num_iteration=model.best_iteration)
             if is_test==False:
-                logger.info(f'Best number of iterations for fold {fold} is: {model.best_iteration}')
                 yhat += model.predict(df_test_X.values, num_iteration=model.best_iteration)
                 #TODO : Best iteration
                 #yhat += model.predict(df_test_X.values)
             
+            logger.info(f'Best number of iterations for fold {fold} is: {model.best_iteration}')
             best_iteration = model.best_iteration
+            
+            del lgb_train, lgb_eval
+            gc.collect()
         
         elif model_type == 'xgb':
             xgb_train = xgb.DMatrix(data=X_in, label=y_in, feature_names=features)
@@ -808,18 +815,26 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
             best_iteration = model.best_ntree_limit
             
         elif model_type == 'cat':
-            model = CatBoost(params=params)
-            #model.fit(X_in, y_in)
-            model.fit(X_in, y_in, eval_set=(X_oof, y_oof), cat_features=[], use_best_model=True, verbose=False)
+            logger.info(f'cat features : {cat_features}')
+            # feature_names accepts only list
+            cat_train = Pool(data=X_in, label=y_in, feature_names=features.tolist(), cat_features=cat_features)
+            cat_eval = Pool(data=X_oof, label=y_oof, feature_names=features.tolist(), cat_features=cat_features)
+            cat_test = Pool(data=df_test_X, feature_names=features.tolist(), cat_features=cat_features)
             
-            del in_index, X_in, y_in 
+            model = CatBoost(params=params)
+            model.fit(cat_train, eval_set=cat_eval, use_best_model=True)
+            
+            del in_index, X_in, y_in, cat_train
             gc.collect()
             
-            yoof[oof_index] = model.predict(X_oof)
+            yoof[oof_index] = model.predict(cat_eval)
             if is_test==False:
-                yhat += model.predict(df_test_X.values)
+                #yhat += model.predict(df_test_X.values)
+                yhat += model.predict(cat_test)
             
-            #best_iteration = model.best_iteration_
+            del cat_eval, cat_test
+            best_iteration = model.best_iteration_
+            logger.info(f'Best number of iterations for fold {fold} is: {best_iteration}')
             
         elif model_type == 'sklearn':
             model = model
@@ -841,6 +856,12 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
             fold_importance = pd.DataFrame()
             fold_importance["feature"] = model.get_score().keys()
             fold_importance["importance"] = model.get_score().values()
+            fold_importance["fold"] = fold
+            feature_importance = pd.concat([feature_importance, fold_importance], axis=0)
+        elif model_type == 'cat':
+            fold_importance = pd.DataFrame()
+            fold_importance["feature"] = model.feature_names_
+            fold_importance["importance"] = model.get_feature_importance()
             fold_importance["fold"] = fold
             feature_importance = pd.concat([feature_importance, fold_importance], axis=0)
         
@@ -884,7 +905,7 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
     gc.collect()
     
     # Plot feature importance
-    if (model_type == 'lgb') | (model_type == 'xgb'):
+    if (model_type == 'lgb') | (model_type == 'xgb') | (model_type == 'cat'):
         # Not sure why it was necessary. Hence commenting
         #feature_importance["importance"] /= n_splits
         cols = feature_importance[["feature", "importance"]].groupby("feature").mean().sort_values(
