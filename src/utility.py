@@ -30,9 +30,9 @@ from catboost import Pool
 
 
 # Directory consisting of (almost) original data in feather format
-CREATED_DATA_DIR = '/home/jupyter/kaggle/energy/data/read_only_feather/v2'
+# CREATED_DATA_DIR = '/home/jupyter/kaggle/energy/data/read_only_feather/v2'
 # Directory consisting of differnt newly created data
-CREATED_FEATURE_DIR = '/home/jupyter/kaggle/energy/data/created_data'
+# CREATED_FEATURE_DIR = '/home/jupyter/kaggle/energy/data/created_data'
 
 
 def read_files(logger, dir_path, train_file_name='train.csv', 
@@ -144,8 +144,8 @@ def update_tracking(run_id,
         
         # If the file exists, drop rows (without final results) 
         # for previous runs which has been stopped inbetween. 
-        if (drop_incomplete_rows & ('oof score' in df.columns)):
-            df = df.loc[~df['oof score'].isna()]
+        if (drop_incomplete_rows & ('oof_score' in df.columns)):
+            df = df.loc[~df['oof_score'].isna()]
              
     except FileNotFoundError:
         df = pd.DataFrame()
@@ -815,7 +815,6 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
             best_iteration = model.best_ntree_limit
             
         elif model_type == 'cat':
-            logger.info(f'cat features : {cat_features}')
             # feature_names accepts only list
             cat_train = Pool(data=X_in, label=y_in, feature_names=features.tolist(), cat_features=cat_features)
             cat_eval = Pool(data=X_oof, label=y_oof, feature_names=features.tolist(), cat_features=cat_features)

@@ -25,7 +25,7 @@ from sklearn.model_selection import StratifiedKFold
         - Convereted every variable to Cat type
         - Label Encoding
 - Modeling
-    - LGMB
+    - CatBoost
 """
 
 
