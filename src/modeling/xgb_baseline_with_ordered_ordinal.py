@@ -25,7 +25,7 @@ from sklearn.model_selection import StratifiedKFold
         - Convereted every variable to Cat type
         - Label Encoding
 - Modeling
-    - LGMB
+    - XGB
 """
 
 
@@ -64,7 +64,7 @@ FI_DIR = '../../fi'
 FI_FIG_DIR = '../../fi_fig'
 
 # Parameters related to KFold
-N_FOLDS = 2
+N_FOLDS = 10
 SHUFFLE = True
 
 # Parameters related to model
@@ -72,7 +72,8 @@ MODEL_TYPE = "xgb"
 METRIC = 'auc'
 N_ESTIMATORS = 100000
 EARLY_STOPPING_ROUNDS = 100
-VERBOSE = 2
+# Print the evaluation metric every 100 iterations
+VERBOSE = 100
 N_THREADS = -1
 
 # Name of the target
@@ -84,7 +85,7 @@ xgb_params = {
     'booster' : 'gbtree',
     'eval_metric' : METRIC,
     'nthread': N_THREADS,
-    'verbosity' : VERBOSE,
+    'verbose_eval' : VERBOSE,
     'seed': SEED,
     'validate_parameters' : True
     }

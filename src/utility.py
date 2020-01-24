@@ -781,15 +781,10 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
             yoof[oof_index] = model.predict(X_oof, num_iteration=model.best_iteration)
             if is_test==False:
                 yhat += model.predict(df_test_X.values, num_iteration=model.best_iteration)
-                #TODO : Best iteration
-                #yhat += model.predict(df_test_X.values)
             
             logger.info(f'Best number of iterations for fold {fold} is: {model.best_iteration}')
             best_iteration = model.best_iteration
-            
-            del lgb_train, lgb_eval
-            gc.collect()
-        
+    
         elif model_type == 'xgb':
             xgb_train = xgb.DMatrix(data=X_in, label=y_in, feature_names=features)
             xgb_eval = xgb.DMatrix(data=X_oof, label=y_oof, feature_names=features)
@@ -844,12 +839,14 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
                 yhat += model.predict_proba(df_test_X.values)[:, 1]
             
         # Calculate feature importance per fold
+        # TODO : Bolier plate code
         if model_type == 'lgb':
             fold_importance = pd.DataFrame()
             fold_importance["feature"] = features
             fold_importance["importance"] = model.feature_importance()
             fold_importance["fold"] = fold
             feature_importance = pd.concat([feature_importance, fold_importance], axis=0)
+            feature_importance.sort_values(by=['importance'], inplace=True)
         elif model_type == 'xgb':
             # Calculate feature importance per fold
             fold_importance = pd.DataFrame()
@@ -857,12 +854,14 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
             fold_importance["importance"] = model.get_score().values()
             fold_importance["fold"] = fold
             feature_importance = pd.concat([feature_importance, fold_importance], axis=0)
+            feature_importance.sort_values(by=['importance'], inplace=True)
         elif model_type == 'cat':
             fold_importance = pd.DataFrame()
             fold_importance["feature"] = model.feature_names_
             fold_importance["importance"] = model.get_feature_importance()
             fold_importance["fold"] = fold
             feature_importance = pd.concat([feature_importance, fold_importance], axis=0)
+            feature_importance.sort_values(by=['importance'], inplace=True)
         
         cv_oof_score = roc_auc_score(y_oof, yoof[oof_index])
         logger.info(f'CV OOF Score for fold {fold} is {cv_oof_score}')

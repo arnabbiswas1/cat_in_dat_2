@@ -25,6 +25,7 @@ from sklearn.model_selection import StratifiedKFold
         - Label Encoding
 - Modeling
     - LGMB
+- Stratified CV with 5 folds
 """
 
 
@@ -63,7 +64,7 @@ FI_DIR = '../../fi'
 FI_FIG_DIR = '../../fi_fig'
 
 # Parameters related to KFold
-N_FOLDS = 2
+N_FOLDS = 5
 SHUFFLE = True
 
 # Parameters related to model
@@ -162,7 +163,7 @@ features_to_removed = []
 # features_to_removed = features_to_removed + ['ord_1', 'ord_2']
 
 # Convert rest of the ordinal features in categories 
-for feature_name in ['ord_1', 'ord_2', 'ord_0', 'ord_3', 'ord_4', 'ord_5']:
+for feature_name in ['ord_0', 'ord_1', 'ord_2', 'ord_3', 'ord_4', 'ord_5']:
     logger.info(f'Converting {feature_name} in ordered categorical')
     combined_df[feature_name + '_cat'] = pd.Categorical(combined_df[feature_name], ordered=True)
     new_features = new_features + [feature_name + '_cat']

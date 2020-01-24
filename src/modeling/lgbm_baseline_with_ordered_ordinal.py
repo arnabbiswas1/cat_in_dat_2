@@ -64,7 +64,7 @@ FI_DIR = '../../fi'
 FI_FIG_DIR = '../../fi_fig'
 
 # Parameters related to KFold
-N_FOLDS = 5
+N_FOLDS = 10
 SHUFFLE = True
 
 # Parameters related to model
