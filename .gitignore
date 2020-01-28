@@ -150,3 +150,5 @@ dmypy.json
 *_epoch_*
 
 *.png
+
+!tracking.csv

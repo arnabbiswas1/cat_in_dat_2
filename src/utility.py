@@ -728,7 +728,7 @@ def train_model(training, validation,predictors, target,  params, test_X=None):
 
 
 def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_test_X, kf, features, 
-                                   params, n_estimators=10000, 
+                                   params=None, n_estimators=10000, 
                                    early_stopping_rounds=100, model_type='lgb', 
                                    is_test=False, seed=42, model=None, 
                                    plot_feature_importance=False, cat_features=None):
@@ -742,6 +742,7 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
                             For LGB can be passed through params as well
                             
     cat_features : Only needed for CatBoost
+    params: For SKLearn based models parameters should be passed while creating the Model itself
     
     """
     yoof = np.zeros(len(df_train_X))

@@ -41,6 +41,8 @@ start = timer()
 # PARAMETERS
 ###################
 
+EXP_DETAILS='Baseline with CatBoost manually ordered ord_1, ord_2. All the categorical features have been encoded using LabelEncoder'
+
 run_id = "{:%m%d_%H%M}".format(datetime.now())
 KERNEL_RUN = False
 MODEL_NUMBER = os.path.basename(__file__).split('.')[0]
@@ -48,8 +50,6 @@ MODEL_NUMBER = os.path.basename(__file__).split('.')[0]
 
 DATA_DIR = '/home/jupyter/kaggle/cat_in_dat_2_git/cat_in_dat_2/data/read_only'
 SEED = 42
-
-EXP_DETAILS='Baseline with CatBoost manually ordered ord_1, ord_2. All the categorical features have been encoded using LabelEncoder'
 
 # Flags
 IS_TEST=False

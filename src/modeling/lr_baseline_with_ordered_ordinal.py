@@ -7,12 +7,11 @@ from timeit import default_timer as timer
 import pandas as pd
 import numpy as np
 
+from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import LabelEncoder
 from sklearn.model_selection import StratifiedKFold
 
 """
-- Summary
-    - Baseline with CatBoost manually ordered ord_1, ord_2 and then CatBoost's default categorical feature handling is used
 - Missing Value Handling
     - Filled with missing_binary, missing_nom for binary and nominal
     - ord_0 : 999
@@ -24,10 +23,10 @@ from sklearn.model_selection import StratifiedKFold
         - ord_1, ord_2 are ordered manually
         - 'ord_0', 'ord_3', 'ord_4', 'ord_5' : ordered based on string literal
     - Encoding
-        - Convert features of type float to int (This is needed for cat handling by catboost)
-        - Convereted every variable to Category type
+        - Convereted every variable to Cat type
+        - Label Encoding
 - Modeling
-    - CatBoost
+    - Logistic Regression
 """
 
 
@@ -43,7 +42,7 @@ start = timer()
 # PARAMETERS
 ###################
 
-EXP_DETAILS="Baseline with CatBoost manually ordered ord_1, ord_2 and then CatBoost's default categorical feature handling is used"
+EXP_DETAILS='Baseline with Logistic Regression manually ordered ord_1, ord_2. All the categorical features have been encoded using LabelEncoder'
 
 run_id = "{:%m%d_%H%M}".format(datetime.now())
 KERNEL_RUN = False
@@ -55,7 +54,7 @@ SEED = 42
 
 # Flags
 IS_TEST=False
-PLOT_FEATURE_IMPORTANCE = True
+PLOT_FEATURE_IMPORTANCE = False
 
 # General configuration stuff
 LOGGER_NAME = 'modeling'
@@ -66,7 +65,7 @@ FI_DIR = '../../fi'
 FI_FIG_DIR = '../../fi_fig'
 
 # Parameters related to KFold
-N_FOLDS = 5
+N_FOLDS = 10
 SHUFFLE = True
 
 # Parameters related to model
@@ -74,24 +73,26 @@ MODEL_TYPE = "cat"
 METRIC = 'AUC'
 N_ESTIMATORS = 100000
 EARLY_STOPPING_ROUNDS = 100
-VERBOSE = -1
+VERBOSE = 100
 N_THREADS = -1
 
 # Name of the target
 TARGET = 'target'
 
 # Params 
-cat_params = {
-    'objective' : 'Logloss',
-    'boosting_type' : 'Plain',
-    'eval_metric' : METRIC,
-    'thread_count': N_THREADS,
-    'verbose' : 100,    # stdout about training process every 100 iter
-    #'logging_level' : 'Verbose',
-    'random_seed': SEED,
-    'n_estimators' : N_ESTIMATORS,
-    'early_stopping_rounds' : EARLY_STOPPING_ROUNDS
-    }
+# cat_params = {
+#     'objective' : 'Logloss',
+#     'boosting_type' : 'Plain',
+#     'eval_metric' : METRIC,
+#     'thread_count': N_THREADS,
+#     'verbose' : VERBOSE,    # stdout about training process every 100 iter
+#     #'logging_level' : 'Verbose',
+#     'random_seed': SEED,
+#     'n_estimators' : N_ESTIMATORS,
+#     'early_stopping_rounds' : EARLY_STOPPING_ROUNDS
+#     }
+
+lr_params = {'solver': 'lbfgs', 'C': 0.1}
 
 logger = utility.get_logger(LOGGER_NAME, MODEL_NUMBER, run_id, LOG_DIR)
 
@@ -100,13 +101,11 @@ logger.info(f'Running for Model Number {MODEL_NUMBER}')
 
 utility.update_tracking(run_id, "model_number", MODEL_NUMBER, drop_incomplete_rows=True)
 utility.update_tracking(run_id, "model_type", MODEL_TYPE)
-utility.update_tracking(run_id, "model_type", MODEL_TYPE)
 utility.update_tracking(run_id, "is_test", IS_TEST)
 utility.update_tracking(run_id, "n_estimators", N_ESTIMATORS)
 utility.update_tracking(run_id, "early_stopping_rounds", EARLY_STOPPING_ROUNDS)
 utility.update_tracking(run_id, "random_state", SEED)
 utility.update_tracking(run_id, "n_threads", N_THREADS)
-#utility.update_tracking(run_id, "learning_rate", LEARNING_RATE)
 utility.update_tracking(run_id, "n_fold", N_FOLDS)
 
 ############################################
@@ -151,11 +150,6 @@ combined_df[['ord_1', 'ord_2', 'ord_3', 'ord_4', 'ord_5']] = combined_df[['ord_1
 combined_df['day'] = combined_df['day'].fillna(999) 
 combined_df['month'] = combined_df['month'].fillna(999)
 
-# Convert all the floats into integer
-# This is necessary for handling categorical data by catboost
-for name in combined_df.select_dtypes('float').columns:
-    combined_df[name] = combined_df[name].astype(np.int)
-
 # List to maintain names
 new_features = []
 features_to_removed = []
@@ -184,21 +178,23 @@ for name in utility.get_fetaure_names(combined_df, '_cat'):
 logger.info(f'List of new_features : {new_features}')
 logger.info(f'List of features_to_removed : {features_to_removed}')
 
-# Names of the features which have not yet been categorized
-remaining_columns = ['bin_0', 'bin_1', 'bin_2', 'bin_3', 'bin_4', 'nom_0', 'nom_1', 'nom_2',
-       'nom_3', 'nom_4', 'nom_5', 'nom_6', 'nom_7', 'nom_8', 'nom_9', 
-       'day', 'month']
-
-for feature_name in remaining_columns:
-    combined_df[feature_name + '_cat'] = combined_df[feature_name].astype('category')
-    features_to_removed.append(feature_name)
-    new_features.append(feature_name + '_cat')
+feature_list = [name for name in combined_df.select_dtypes(['object', 'float64']) if name not in features_to_removed]
+# Print rest of the variables into categorical
+for feature_name in feature_list:
+    logger.info(f'Converting {feature_name} in categorical')
+    combined_df[feature_name + '_cat'] = pd.Categorical(combined_df[feature_name])
+    new_features = new_features + [feature_name + '_cat']
+    features_to_removed = features_to_removed + [feature_name]
 
 # Keep a copy of the original DF
 combined_df_org = combined_df.copy(deep=True)
 
 # remove the features not needed
 combined_df = combined_df.drop(features_to_removed, axis=1)
+
+for name in combined_df.columns:
+    lb = LabelEncoder()
+    combined_df[name] = lb.fit_transform(combined_df[name])
 
 train_X = combined_df[:train_index]
 test_X = combined_df[train_index:]
@@ -207,27 +203,27 @@ logger.info(f"train_X : {train_X.shape}")
 logger.info(f"test_X : {test_X.shape}")
 logger.info(f"train_Y : {train_Y.shape}")
 
+
 #####################
 # Build models
 #####################
 
+model = LogisticRegression(lr_params)
+
 # Params are defines as dictionary above
 kf = StratifiedKFold(n_splits=N_FOLDS, random_state=SEED, shuffle=SHUFFLE)
-# All the features considered are categorical features
 features = train_X.columns
-cat_features = train_X.columns
 
 #logger.info('################ Running with features ################')
 logger.info(f'Feature names {features.values}')
-logger.info(f'Categorical feature names {cat_features.values}')
 logger.info(f'Target is {TARGET}')
 
 utility.update_tracking(run_id, "no_of_features", len(features), is_integer=True)
 
 result_dict = utility.make_prediction_classification(logger, run_id, train_X, train_Y, test_X, features=features,
-                                                     params=cat_params, seed=SEED, 
-                                                     kf=kf, model_type=MODEL_TYPE, 
-                                                     plot_feature_importance=PLOT_FEATURE_IMPORTANCE, cat_features=cat_features)
+                                                     params=None, seed=SEED, 
+                                                     kf=kf, model_type=MODEL_TYPE, model=model,
+                                                     plot_feature_importance=PLOT_FEATURE_IMPORTANCE)
 
 
 utility.save_artifacts(logger, IS_TEST, PLOT_FEATURE_IMPORTANCE, 
@@ -245,3 +241,4 @@ utility.update_tracking(run_id, "training_time", (end - start), is_integer=True)
 # Update the comments
 utility.update_tracking(run_id, "comments", EXP_DETAILS)
 logger.info('Done!')
+
