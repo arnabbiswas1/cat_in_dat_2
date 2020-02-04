@@ -727,7 +727,7 @@ def train_model(training, validation,predictors, target,  params, test_X=None):
         return bst, valid_score
 
 
-def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_test_X, kf, features, 
+def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_test_X, kf, features=None, 
                                    params=None, n_estimators=10000, 
                                    early_stopping_rounds=100, model_type='lgb', 
                                    is_test=False, seed=42, model=None, 
@@ -768,13 +768,15 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
         if model_type == 'lgb':
             lgb_train = lgb.Dataset(X_in, y_in)
             lgb_eval = lgb.Dataset(X_oof, y_oof, reference=lgb_train)
-
+                
             model = lgb.train(
                 params,
                 lgb_train,
                 valid_sets = [lgb_train, lgb_eval],
                 verbose_eval = 50,
-                early_stopping_rounds=early_stopping_rounds
+                early_stopping_rounds=early_stopping_rounds,
+                feature_name=features,
+                categorical_feature=cat_features
             )   
             
             del lgb_train, lgb_eval, in_index, X_in, y_in 
@@ -915,6 +917,79 @@ def make_prediction_classification(logger, run_id, df_train_X, df_train_Y, df_te
 
         result_dict['feature_importance'] = feature_importance
         result_dict['best_features'] = best_features
+            
+    logger.info('Training/Prediction completed!')
+    return result_dict
+
+
+
+def make_sklearn_prediction_classification(logger, run_id, 
+                                   df_train_X, df_train_Y, df_test_X, kf, 
+                                   features=None, params=None,
+                                   model_type=None, is_test=False, 
+                                   seed=42, model=None):
+    """
+    Make prediction for classification use case only
+    
+    """
+    yoof = np.zeros(len(df_train_X))
+    yhat = np.zeros(len(df_test_X))
+    cv_scores = []
+    result_dict = {}
+    feature_importance = pd.DataFrame()
+    best_iterations = []
+
+    fold = 0
+    for in_index, oof_index in kf.split(df_train_X[features], df_train_Y):
+        # Start a counter describing number of folds
+        fold += 1
+        # Number of splits defined as a part of KFold/StratifiedKFold
+        n_splits = kf.get_n_splits()
+        logger.info(f'fold {fold} of {n_splits}')
+        X_in, X_oof = df_train_X.iloc[in_index].values, df_train_X.iloc[oof_index].values
+        y_in, y_oof = df_train_Y.iloc[in_index].values, df_train_Y.iloc[oof_index].values
+            
+        model = model
+        model.fit(X_in, y_in)
+            
+        yoof[oof_index] = model.predict_proba(X_oof)[:, 1]
+        if is_test==False:
+            yhat += model.predict_proba(df_test_X.values)[:, 1]
+        
+        cv_oof_score = roc_auc_score(y_oof, yoof[oof_index])
+        logger.info(f'CV OOF Score for fold {fold} is {cv_oof_score}')
+        cv_scores.append(cv_oof_score)
+        
+        del oof_index, X_oof, y_oof
+        gc.collect()
+        
+        update_tracking(run_id, "metric_fold_{}".format(fold),
+                    cv_oof_score,
+                    is_integer=False)
+
+    yhat /= n_splits
+
+    oof_score = round(roc_auc_score(df_train_Y, yoof), 5)
+    avg_cv_scores = round(sum(cv_scores)/len(cv_scores), 5)
+    std_cv_scores = round(np.array(cv_scores).std(), 5)
+
+    logger.info(f'Combined OOF score : {oof_score}')
+    logger.info(f'Average of {fold} folds OOF score {avg_cv_scores}')
+    logger.info(f'std of {fold} folds OOF score {std_cv_scores}')
+    
+    result_dict['yoof'] = yoof
+    result_dict['prediction'] = yhat
+    result_dict['oof_score'] = oof_score
+    result_dict['cv_scores'] = cv_scores
+    result_dict['avg_cv_scores'] = avg_cv_scores
+    result_dict['std_cv_scores'] = std_cv_scores
+    
+    update_tracking(run_id, "oof_score", oof_score, is_integer=False)
+    update_tracking(run_id, "cv_avg_score", avg_cv_scores, is_integer=False)
+    update_tracking(run_id, "cv_std_score", std_cv_scores, is_integer=False)
+    
+    del yoof, yhat
+    gc.collect()
             
     logger.info('Training/Prediction completed!')
     return result_dict
